@@ -1,0 +1,142 @@
+# Refer to https://github.com/severalnines/galera-docker-mariadb
+# Refer to https://severalnines.com/blog/mysql-docker-deploy-homogeneous-galera-cluster-etcd
+# Refer to https://hub.docker.com/r/severalnines/mariadb/
+# Changed image
+#   From: severalnines/mariadb:10.1
+#   To: drlee001/mariadb:10.1
+# Changed storageclass
+#   From: glusterfs
+#   To: nfs(default)
+# Added mysql-read service
+#       mysql-read-external service
+
+# Headless service for galera statefulset
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: default
+  name: galera-hs
+  labels:
+    app: galera-ss
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 3306
+    name: mysql
+  selector:
+    app: galera-ss
+  clusterIP: 10.96.1.1
+---
+
+# Client service for connecting to any MySQL instance for reads.
+# For writes, you must instead connect to the master: galera-ss-0.galera-hs.
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: default
+  name: galera-read
+  labels:
+    app: galera-ss
+spec:
+  ports:
+  - port: 3306
+    name: mysql
+  selector:
+    app: galera-ss
+  sessionAffinity: ClientIP
+
+---
+
+# Client service via NodePort for connecting to any MySQL instance for reads from external area.
+
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: default
+  name: galera-read-external
+  labels:
+    app: galera-ss
+spec:
+  type: NodePort
+  ports:
+  - port: 3306
+    name: mysql
+    targetPort: 3306
+  selector:
+    app: galera-ss
+  sessionAffinity: ClientIP
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: default
+  name: galera-ss
+spec:
+  selector:
+    matchLabels:
+      app: galera-ss
+  serviceName: "galera-hs"
+  replicas: 3 
+  template:
+    metadata:
+      labels:
+        app: galera-ss
+    spec:
+      containers:
+      - name: mariadb 
+        image: hand1er/mariadb:10.1-modcnf
+        ports:
+        - name: mysql
+          containerPort: 3306
+        env:
+        # kubectl create secret generic mysql-pass --from-file=password.txt
+        - name: MYSQL_ROOT_PASSWORD
+          value: mysql
+        - name: DISCOVERY_SERVICE
+          value: etcd-client:2379
+        - name: XTRABACKUP_PASSWORD
+          value: password
+        - name: CLUSTER_NAME
+          value: mariadb_galera_ss
+        - name: MYSQL_DATABASE
+          value: keystone
+        - name: MYSQL_USER
+          value: keystone
+        - name: MYSQL_PASSWORD
+          value: secret
+        readinessProbe:
+          exec:
+            command:
+            - /healthcheck.sh
+            - --readiness
+          initialDelaySeconds: 120
+          periodSeconds: 1
+        livenessProbe:
+          exec:
+            command:
+            - /healthcheck.sh
+            - --liveness
+          initialDelaySeconds: 120
+          periodSeconds: 1
+#        resources:
+#          requests:
+#            cpu: 200m
+#            memory: 200Mi
+        volumeMounts:
+        - name: mysql-datadir
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      namespace: default
+      name: mysql-datadir
+      #annotations:
+        #volume.beta.kubernetes.io/storage-class: glusterfs-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+          #storage: 200Mi

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: keystone-app
+
+spec:
+ minReadySeconds: 20
+ strategy:
+  type: RollingUpdate
+  rollingUpdate:
+   maxSurge: 10%
+   maxUnavailable: 1
+ replicas: 5 
+ selector:
+  matchLabels:
+   app: keystone
+ template:
+  metadata:
+   labels:
+    app: keystone
+  spec:
+   containers:
+   - name: keystone
+     image: yayaja11/keystoneimage:queens
+     securityContext:
+       privileged: true
+     volumeMounts:
+     - name: nfs-fernet
+       mountPath: /etc/keystone/fernet-keys
+     imagePullPolicy: Never
+     env:
+     - name: DATABASE_HOST
+       value: 10.96.1.1:3306
+#       value: 10.105.16.121:3306 
+     - name: KEYSTONE_DB_USER
+       value: keystone
+     - name: KEYSTONE_DB_PASSWORD
+       value: secret
+     - name: KEYSTONE_DB_NAME
+       value: keystone
+     livenessProbe:
+       tcpSocket:
+         port: 5000
+       initialDelaySeconds: 5 
+       periodSeconds: 10 
+#     readinessProbe:
+#       tcpSocket:
+#         port: 5000
+#       initialDelaySeconds: 10
+#       periodSeconds: 10
+     resources:
+       requests:
+          cpu: "300m"
+       limits:
+          cpu: "300m"
+
+   volumes:
+   - name: nfs-fernet
+     nfs:
+       path: /etc/keystone/fernet-keys
+       server: k8s-master
+

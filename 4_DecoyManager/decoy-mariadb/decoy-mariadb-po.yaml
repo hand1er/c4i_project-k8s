@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decoy-mariadb 
+spec:
+  replicas: 2 
+  selector:
+    matchLabels:
+      app: decoy-mariadb
+  template:
+    metadata:
+      labels:
+        app: decoy-mariadb
+    spec:
+      containers:
+      - name: decoy-mariadb 
+        image: hand1er/mariadb:10.1-modcnf
+        ports:
+        - name: mysql
+          containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: mysql
+        - name: XTRABACKUP_PASSWORD
+          value: password
+        - name: CLUSTER_NAME
+          value: mariadb_galera_ss
+        - name: MYSQL_DATABASE
+          value: keystone
+        - name: MYSQL_USER
+          value: keystone
+        - name: MYSQL_PASSWORD
+          value: secret
+        volumeMounts:
+        - name: decoy-storage
+          mountPath: /data/decoy
+      volumes:
+      - name: decoy-storage
+        emptyDir: {}
+
